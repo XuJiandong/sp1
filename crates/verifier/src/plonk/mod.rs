@@ -118,11 +118,32 @@ impl PlonkVerifier {
         public_inputs: &[[u8; 32]],
         plonk_vk: &[u8],
     ) -> Result<(), PlonkError> {
+        use alloc::format;
+        use ckb_std::syscalls::{current_cycles, debug};
+
+        let c = current_cycles();
         let plonk_vk = load_plonk_verifying_key_from_bytes(plonk_vk).unwrap();
+        debug(format!(
+            "  load_plonk_verifying_key_from_bytes: {} M cycles",
+            (current_cycles() - c) / 1024 / 1024
+        ));
+
+        let c = current_cycles();
         let proof = load_plonk_proof_from_bytes(proof, plonk_vk.qcp.len()).unwrap();
+        debug(format!(
+            "  load_plonk_proof_from_bytes: {} M cycles",
+            (current_cycles() - c) / 1024 / 1024
+        ));
 
         let public_inputs =
             public_inputs.iter().map(|input| Fr::from_slice(input).unwrap()).collect::<Vec<_>>();
-        verify_plonk_algebraic(&plonk_vk, &proof, &public_inputs)
+
+        let c = current_cycles();
+        let result = verify_plonk_algebraic(&plonk_vk, &proof, &public_inputs);
+        debug(format!(
+            "  verify_plonk_algebraic: {} M cycles",
+            (current_cycles() - c) / 1024 / 1024
+        ));
+        result
     }
 }

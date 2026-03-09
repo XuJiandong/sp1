@@ -544,6 +544,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "buddy-alloc"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee741d62dcaf41ca303576ef890989ccb01d5dd77f8ce1a6d6c7846ab5d09efb"
+
+[[package]]
 name = "build-host"
 version = "1.1.0"
 dependencies = [
@@ -698,6 +704,18 @@ dependencies = [
  "iana-time-zone",
  "num-traits",
  "windows-link 0.2.0",
+]
+
+[[package]]
+name = "ckb-std"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "161ac10a3d0c70ff689a0cf739cf5d91329eb4da085001e887aa636a2e729d84"
+dependencies = [
+ "buddy-alloc",
+ "cc",
+ "gcd",
+ "int-enum",
 ]
 
 [[package]]
@@ -2095,6 +2113,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "int-enum"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e366a1634cccc76b4cfd3e7580de9b605e4d93f1edac48d786c1f867c0def495"
+dependencies = [
+ "proc-macro2",
+ "proc-macro2-diagnostics",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
 name = "io-uring"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3252,6 +3282,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proc-macro2-diagnostics"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+ "version_check",
 ]
 
 [[package]]
@@ -4621,6 +4663,7 @@ version = "5.2.4"
 dependencies = [
  "blake3",
  "cfg-if",
+ "ckb-std",
  "hex",
  "lazy_static",
  "sha2 0.10.9",
