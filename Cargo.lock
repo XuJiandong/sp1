@@ -7678,7 +7678,6 @@ dependencies = [
  "cfg-if",
  "dirs",
  "hex",
- "lazy_static",
  "rstest 0.25.0",
  "serde",
  "serial_test",

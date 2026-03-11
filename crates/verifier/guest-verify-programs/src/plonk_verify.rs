@@ -10,7 +10,7 @@ fn main() {
     let sp1_vkey_hash: String = sp1_zkvm::io::read();
 
     // Verify the groth16 proof.
-    let plonk_vk = *sp1_verifier::PLONK_VK_BYTES;
+    let plonk_vk = sp1_verifier::PLONK_VK_BYTES;
     let result =
         PlonkVerifier::verify(&proof, &sp1_public_values, &sp1_vkey_hash, plonk_vk).unwrap();
 }
