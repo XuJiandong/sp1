@@ -9,6 +9,7 @@ mod hash_to_field;
 mod kzg;
 mod proof;
 mod transcript;
+mod utility;
 mod verify;
 
 pub(crate) mod error;
@@ -19,6 +20,8 @@ pub(crate) use verify::verify_plonk_algebraic;
 
 use alloc::vec::Vec;
 use bn::Fr;
+use ckb_std::debug;
+use ckb_std::syscalls::current_cycles;
 use error::PlonkError;
 use sha2::{Digest, Sha256};
 
@@ -182,8 +185,18 @@ impl PlonkVerifier {
         public_inputs: &[[u8; 32]],
         plonk_vk: &[u8],
     ) -> Result<(), PlonkError> {
+        let last_cycles = current_cycles();
         let plonk_vk = load_plonk_verifying_key_from_bytes(plonk_vk)?;
+        debug!(
+            "load_plonk_verifying_key_from_bytes costs: {} K cycles",
+            (current_cycles() - last_cycles) / 1024
+        );
+        let last_cycles = current_cycles();
         let proof = load_plonk_proof_from_bytes(proof, plonk_vk.qcp.len())?;
+        debug!(
+            "load_plonk_proof_from_bytes costs: {} K cycles",
+            (current_cycles() - last_cycles) / 1024
+        );
 
         let public_inputs = public_inputs
             .iter()

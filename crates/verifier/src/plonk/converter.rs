@@ -1,23 +1,150 @@
 use crate::{
     constants::{
+        COMPRESSED_INFINITY, COMPRESSED_NEGATIVE, MASK,
         PLONK_CLAIMED_VALUES_COUNT, PLONK_CLAIMED_VALUES_OFFSET, PLONK_Z_SHIFTED_OPENING_H_OFFSET,
         PLONK_Z_SHIFTED_OPENING_VALUE_OFFSET,
-    },
-    converter::{
-        unchecked_compressed_x_to_g1_point, unchecked_compressed_x_to_g2_point,
-        uncompressed_bytes_to_g1_point,
     },
     error::Error,
 };
 use alloc::vec::Vec;
 use bn::{AffineG1, Fr, G2};
+use parity_bn as pb;
 
 use super::{
     error::PlonkError,
     kzg::{self, BatchOpeningProof, LineEvaluationAff, OpeningProof, E2},
+    utility,
     verify::PlonkVerifyingKey,
     PlonkProof,
 };
+
+// Original imports (replaced by parity-bn helpers below):
+// use crate::converter::{
+//     unchecked_compressed_x_to_g1_point, unchecked_compressed_x_to_g2_point,
+//     uncompressed_bytes_to_g1_point,
+// };
+
+/// Parses a gnark-format compressed G1 point (32 bytes) using parity-bn.
+///
+/// The gnark format encodes the sign flag in the top 2 bits of the first byte:
+/// - `COMPRESSED_POSITIVE` (0x80) → use the smaller y coordinate
+/// - `COMPRESSED_NEGATIVE` (0xC0) → use the larger y coordinate
+fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
+    // Original: crate::converter::unchecked_compressed_x_to_g1_point(buf).map_err(PlonkError::GeneralError)
+    if buf.len() != 32 {
+        return Err(PlonkError::GeneralError(Error::InvalidXLength));
+    }
+
+    let m_data = buf[0] & MASK;
+    if m_data == 0 || m_data == COMPRESSED_INFINITY {
+        return Err(PlonkError::GeneralError(Error::InvalidPoint));
+    }
+
+    let mut x_bytes = [0u8; 32];
+    x_bytes.copy_from_slice(buf);
+    x_bytes[0] &= !MASK;
+
+    let x = pb::Fq::from_slice(&x_bytes)
+        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+
+    let b = pb::G1::b();
+    let y_squared = x * x * x + b;
+    let y = y_squared.sqrt().ok_or(PlonkError::GeneralError(Error::InvalidPoint))?;
+    let neg_y = -y;
+
+    let y_u256 = y.into_u256();
+    let neg_y_u256 = neg_y.into_u256();
+
+    // COMPRESSED_POSITIVE → smaller y; COMPRESSED_NEGATIVE → larger y
+    let final_y = if m_data == COMPRESSED_NEGATIVE {
+        if y_u256 > neg_y_u256 { y } else { neg_y }
+    } else {
+        if y_u256 > neg_y_u256 { neg_y } else { y }
+    };
+
+    let pb_affine = pb::AffineG1::new(x, final_y)
+        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
+
+    utility::pb_affine_g1_to_sb(pb_affine)
+}
+
+/// Parses a gnark-format compressed G2 point (64 bytes) using parity-bn.
+///
+/// Layout: `[x_imag_32 (with flag) | x_real_32]`
+/// - `COMPRESSED_POSITIVE` (0x80) → use the smaller y (by Fq2 lexicographic order)
+/// - `COMPRESSED_NEGATIVE` (0xC0) → use the larger y
+fn parse_compressed_g2(buf: &[u8]) -> Result<bn::AffineG2, PlonkError> {
+    // Original: crate::converter::unchecked_compressed_x_to_g2_point(buf).map_err(PlonkError::GeneralError)
+    if buf.len() != 64 {
+        return Err(PlonkError::GeneralError(Error::InvalidXLength));
+    }
+
+    let m_data = buf[0] & MASK;
+
+    if m_data == COMPRESSED_INFINITY {
+        if buf[0] & !MASK == 0 && buf[1..].iter().all(|&b| b == 0) {
+            return Ok(bn::AffineG2::zero());
+        }
+        return Err(PlonkError::GeneralError(Error::InvalidPoint));
+    }
+
+    if m_data == 0 {
+        return Err(PlonkError::GeneralError(Error::InvalidPoint));
+    }
+
+    let mut xi_bytes = [0u8; 32];
+    xi_bytes.copy_from_slice(&buf[..32]);
+    xi_bytes[0] &= !MASK;
+
+    let x_imag = pb::Fq::from_slice(&xi_bytes)
+        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+    let x_real = pb::Fq::from_slice(&buf[32..64])
+        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+
+    let x = pb::Fq2::new(x_real, x_imag);
+
+    let b = pb::G2::b();
+    let y_squared = x * x * x + b;
+    let y = y_squared.sqrt().ok_or(PlonkError::GeneralError(Error::InvalidPoint))?;
+    let neg_y = -y;
+
+    // Fq2 comparison: imaginary part first, then real (matches substrate-bn Fq2::Ord)
+    let y_gt_neg_y = {
+        let yi = y.imaginary().into_u256();
+        let nyi = neg_y.imaginary().into_u256();
+        if yi != nyi { yi > nyi } else { y.real().into_u256() > neg_y.real().into_u256() }
+    };
+
+    // COMPRESSED_POSITIVE → smaller y; COMPRESSED_NEGATIVE → larger y
+    let final_y = if m_data == COMPRESSED_NEGATIVE {
+        if y_gt_neg_y { y } else { neg_y }
+    } else {
+        if y_gt_neg_y { neg_y } else { y }
+    };
+
+    let pb_affine = pb::AffineG2::new(x, final_y)
+        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
+
+    utility::pb_affine_g2_to_sb(pb_affine)
+}
+
+/// Parses an uncompressed G1 point (64 bytes: x_32 || y_32) using parity-bn.
+fn parse_uncompressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
+    // Original: crate::converter::uncompressed_bytes_to_g1_point(buf).map_err(PlonkError::GeneralError)
+    if buf.len() != 64 {
+        return Err(PlonkError::GeneralError(Error::InvalidXLength));
+    }
+
+    let x = pb::Fq::from_slice(&buf[..32])
+        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+    let y = pb::Fq::from_slice(&buf[32..64])
+        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+
+    let pb_affine = pb::AffineG1::new(x, y)
+        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
+
+    utility::pb_affine_g1_to_sb(pb_affine)
+}
 
 pub(crate) fn load_plonk_verifying_key_from_bytes(
     buffer: &[u8],
@@ -42,14 +169,22 @@ pub(crate) fn load_plonk_verifying_key_from_bytes(
 
     let coset_shift =
         Fr::from_slice(&buffer[80..112]).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
-    let s0 = unchecked_compressed_x_to_g1_point(&buffer[112..144])?;
-    let s1 = unchecked_compressed_x_to_g1_point(&buffer[144..176])?;
-    let s2 = unchecked_compressed_x_to_g1_point(&buffer[176..208])?;
-    let ql = unchecked_compressed_x_to_g1_point(&buffer[208..240])?;
-    let qr = unchecked_compressed_x_to_g1_point(&buffer[240..272])?;
-    let qm = unchecked_compressed_x_to_g1_point(&buffer[272..304])?;
-    let qo = unchecked_compressed_x_to_g1_point(&buffer[304..336])?;
-    let qk = unchecked_compressed_x_to_g1_point(&buffer[336..368])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[112..144])?
+    let s0 = parse_compressed_g1(&buffer[112..144])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[144..176])?
+    let s1 = parse_compressed_g1(&buffer[144..176])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[176..208])?
+    let s2 = parse_compressed_g1(&buffer[176..208])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[208..240])?
+    let ql = parse_compressed_g1(&buffer[208..240])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[240..272])?
+    let qr = parse_compressed_g1(&buffer[240..272])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[272..304])?
+    let qm = parse_compressed_g1(&buffer[272..304])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[304..336])?
+    let qo = parse_compressed_g1(&buffer[304..336])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[336..368])?
+    let qk = parse_compressed_g1(&buffer[336..368])?;
     let num_qcp = u32::from_be_bytes([buffer[368], buffer[369], buffer[370], buffer[371]]);
 
     // Verifying key for SP1 proofs have this size.
@@ -61,14 +196,18 @@ pub(crate) fn load_plonk_verifying_key_from_bytes(
     let mut offset = 372;
 
     for _ in 0..num_qcp {
-        let point = unchecked_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
+        // Original: unchecked_compressed_x_to_g1_point(&buffer[offset..offset + 32])?
+        let point = parse_compressed_g1(&buffer[offset..offset + 32])?;
         qcp.push(point);
         offset += 32;
     }
 
-    let g1 = unchecked_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
-    let g2_0 = unchecked_compressed_x_to_g2_point(&buffer[offset + 32..offset + 96])?;
-    let g2_1 = unchecked_compressed_x_to_g2_point(&buffer[offset + 96..offset + 160])?;
+    // Original: unchecked_compressed_x_to_g1_point(&buffer[offset..offset + 32])?
+    let g1 = parse_compressed_g1(&buffer[offset..offset + 32])?;
+    // Original: unchecked_compressed_x_to_g2_point(&buffer[offset + 32..offset + 96])?
+    let g2_0 = parse_compressed_g2(&buffer[offset + 32..offset + 96])?;
+    // Original: unchecked_compressed_x_to_g2_point(&buffer[offset + 96..offset + 160])?
+    let g2_1 = parse_compressed_g2(&buffer[offset + 96..offset + 160])?;
 
     offset += 160 + 33788;
 
@@ -154,12 +293,18 @@ pub(crate) fn load_plonk_proof_from_bytes(
         return Err(PlonkError::GeneralError(Error::InvalidData));
     }
 
-    let lro0 = uncompressed_bytes_to_g1_point(&buffer[..64])?;
-    let lro1 = uncompressed_bytes_to_g1_point(&buffer[64..128])?;
-    let lro2 = uncompressed_bytes_to_g1_point(&buffer[128..192])?;
-    let h0 = uncompressed_bytes_to_g1_point(&buffer[192..256])?;
-    let h1 = uncompressed_bytes_to_g1_point(&buffer[256..320])?;
-    let h2 = uncompressed_bytes_to_g1_point(&buffer[320..384])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[..64])?
+    let lro0 = parse_uncompressed_g1(&buffer[..64])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[64..128])?
+    let lro1 = parse_uncompressed_g1(&buffer[64..128])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[128..192])?
+    let lro2 = parse_uncompressed_g1(&buffer[128..192])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[192..256])?
+    let h0 = parse_uncompressed_g1(&buffer[192..256])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[256..320])?
+    let h1 = parse_uncompressed_g1(&buffer[256..320])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[320..384])?
+    let h2 = parse_uncompressed_g1(&buffer[320..384])?;
 
     // Stores l_at_zeta, r_at_zeta, o_at_zeta, s 1_at_zeta, s2_at_zeta, bsb22_commitments
     let mut claimed_values = Vec::with_capacity(PLONK_CLAIMED_VALUES_COUNT + num_bsb22_commitments);
@@ -171,13 +316,16 @@ pub(crate) fn load_plonk_proof_from_bytes(
         offset += 32;
     }
 
-    let z = uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?
+    let z = parse_uncompressed_g1(&buffer[offset..offset + 64])?;
     let z_shifted_opening_value = Fr::from_slice(&buffer[offset + 64..offset + 96])
         .map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
     offset += PLONK_Z_SHIFTED_OPENING_VALUE_OFFSET;
 
-    let batched_proof_h = uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
-    let z_shifted_opening_h = uncompressed_bytes_to_g1_point(&buffer[offset + 64..offset + 128])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?
+    let batched_proof_h = parse_uncompressed_g1(&buffer[offset..offset + 64])?;
+    // Original: uncompressed_bytes_to_g1_point(&buffer[offset + 64..offset + 128])?
+    let z_shifted_opening_h = parse_uncompressed_g1(&buffer[offset + 64..offset + 128])?;
     offset += PLONK_Z_SHIFTED_OPENING_H_OFFSET;
 
     for _ in 0..num_bsb22_commitments {
@@ -189,7 +337,8 @@ pub(crate) fn load_plonk_proof_from_bytes(
 
     let mut bsb22_commitments = Vec::with_capacity(num_bsb22_commitments);
     for _ in 0..num_bsb22_commitments {
-        let commitment = uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
+        // Original: uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?
+        let commitment = parse_uncompressed_g1(&buffer[offset..offset + 64])?;
         bsb22_commitments.push(commitment);
         offset += 64;
     }
