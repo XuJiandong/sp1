@@ -1,59 +1,59 @@
-use crate::error::Error;
-use bn as sb;
 use parity_bn as pb;
+use pb::arith::U256;
+use pb::Group;
+
+use crate::error::Error;
 
 use super::error::PlonkError;
 
-pub(crate) fn map_pb_field_err(e: pb::FieldError) -> sb::FieldError {
-    match e {
-        pb::FieldError::InvalidSliceLength => sb::FieldError::InvalidSliceLength,
-        pb::FieldError::InvalidU512Encoding => sb::FieldError::InvalidU512Encoding,
-        pb::FieldError::NotMember => sb::FieldError::NotMember,
+/// Converts a U256 to a big-endian [u8; 32] array.
+pub(crate) fn u256_to_bytes_be(u: &U256) -> [u8; 32] {
+    let mut buf = [0u8; 32];
+    u.to_big_endian(&mut buf).expect("32-byte buffer always succeeds");
+    buf
+}
+
+/// Parses bytes as a big-endian integer and reduces modulo the Fr modulus.
+/// Accepts any length; pads with zeros on the left to 64 bytes if shorter.
+pub(crate) fn fr_from_bytes_be_mod_order(bytes: &[u8]) -> pb::Fr {
+    // Original: bn::Fr::from_bytes_be_mod_order(bytes)
+    let mut buf = [0u8; 64];
+    if bytes.len() >= 64 {
+        buf.copy_from_slice(&bytes[bytes.len() - 64..]);
+    } else {
+        buf[64 - bytes.len()..].copy_from_slice(bytes);
     }
+    pb::Fr::interpret(&buf)
 }
 
-#[allow(dead_code)]
-pub(crate) fn pb_fq_to_sb(fq: pb::Fq) -> Result<sb::Fq, PlonkError> {
-    let mut buf = [0u8; 32];
-    fq.to_big_endian(&mut buf).expect("32-byte buffer always succeeds");
-    sb::Fq::from_slice(&buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))
+/// Multi-scalar multiplication: computes sum_i(scalars[i] * points[i]).
+/// Original: bn::AffineG1::msm(&points, &scalars)
+pub(crate) fn affine_g1_msm(points: &[pb::AffineG1], scalars: &[pb::Fr]) -> pb::AffineG1 {
+    let mut acc = pb::G1::zero();
+    for (p, s) in points.iter().zip(scalars.iter()) {
+        acc = acc + pb::G1::from(*p) * *s;
+    }
+    pb::AffineG1::from_jacobian(acc)
+        .expect("MSM result should not be point at infinity in valid proof")
 }
 
-#[allow(dead_code)]
-pub(crate) fn pb_fr_to_sb(fr: pb::Fr) -> Result<sb::Fr, PlonkError> {
-    // NOTE: pb::Fr::to_big_endian serializes raw Montgomery limbs; use into_u256() for canonical bytes.
-    let u256 = fr.into_u256();
-    let mut buf = [0u8; 32];
-    u256.to_big_endian(&mut buf).expect("32-byte buffer always succeeds");
-    sb::Fr::from_slice(&buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))
+/// Negates an AffineG1 point via G1 Jacobian arithmetic.
+/// Original: -affine_g1 (substrate-bn had Neg for AffineG1)
+pub(crate) fn affine_g1_neg(p: pb::AffineG1) -> pb::AffineG1 {
+    pb::AffineG1::from_jacobian(-pb::G1::from(p))
+        .expect("negation of affine point cannot produce point at infinity")
 }
 
-pub(crate) fn pb_affine_g1_to_sb(g1: pb::AffineG1) -> Result<sb::AffineG1, PlonkError> {
-    let mut x_buf = [0u8; 32];
-    let mut y_buf = [0u8; 32];
-    g1.x().to_big_endian(&mut x_buf).expect("32-byte buffer always succeeds");
-    g1.y().to_big_endian(&mut y_buf).expect("32-byte buffer always succeeds");
-    let x = sb::Fq::from_slice(&x_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
-    let y = sb::Fq::from_slice(&y_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
-    Ok(sb::AffineG1::new_unchecked(x, y))
+/// Adds two AffineG1 points via G1 Jacobian arithmetic.
+/// Original: affine_g1_a + affine_g1_b (substrate-bn had Add for AffineG1)
+pub(crate) fn affine_g1_add(a: pb::AffineG1, b: pb::AffineG1) -> Result<pb::AffineG1, PlonkError> {
+    pb::AffineG1::from_jacobian(pb::G1::from(a) + pb::G1::from(b))
+        .ok_or(PlonkError::GeneralError(Error::InvalidPoint))
 }
 
-pub(crate) fn pb_affine_g2_to_sb(g2: pb::AffineG2) -> Result<sb::AffineG2, PlonkError> {
-    let mut xr_buf = [0u8; 32];
-    let mut xi_buf = [0u8; 32];
-    let mut yr_buf = [0u8; 32];
-    let mut yi_buf = [0u8; 32];
-    g2.x().real().to_big_endian(&mut xr_buf).expect("32-byte buffer always succeeds");
-    g2.x().imaginary().to_big_endian(&mut xi_buf).expect("32-byte buffer always succeeds");
-    g2.y().real().to_big_endian(&mut yr_buf).expect("32-byte buffer always succeeds");
-    g2.y().imaginary().to_big_endian(&mut yi_buf).expect("32-byte buffer always succeeds");
-    let x = sb::Fq2::new(
-        sb::Fq::from_slice(&xr_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?,
-        sb::Fq::from_slice(&xi_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?,
-    );
-    let y = sb::Fq2::new(
-        sb::Fq::from_slice(&yr_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?,
-        sb::Fq::from_slice(&yi_buf).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?,
-    );
-    Ok(sb::AffineG2::new_unchecked(x, y))
+/// Subtracts two AffineG1 points via G1 Jacobian arithmetic.
+/// Original: affine_g1_a - affine_g1_b (substrate-bn had Sub for AffineG1)
+pub(crate) fn affine_g1_sub(a: pb::AffineG1, b: pb::AffineG1) -> Result<pb::AffineG1, PlonkError> {
+    pb::AffineG1::from_jacobian(pb::G1::from(a) - pb::G1::from(b))
+        .ok_or(PlonkError::GeneralError(Error::InvalidPoint))
 }

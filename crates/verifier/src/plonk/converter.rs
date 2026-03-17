@@ -1,28 +1,24 @@
 use crate::{
     constants::{
-        COMPRESSED_INFINITY, COMPRESSED_NEGATIVE, MASK,
-        PLONK_CLAIMED_VALUES_COUNT, PLONK_CLAIMED_VALUES_OFFSET, PLONK_Z_SHIFTED_OPENING_H_OFFSET,
+        COMPRESSED_INFINITY, COMPRESSED_NEGATIVE, MASK, PLONK_CLAIMED_VALUES_COUNT,
+        PLONK_CLAIMED_VALUES_OFFSET, PLONK_Z_SHIFTED_OPENING_H_OFFSET,
         PLONK_Z_SHIFTED_OPENING_VALUE_OFFSET,
     },
     error::Error,
 };
 use alloc::vec::Vec;
-use bn::{AffineG1, Fr, G2};
 use parity_bn as pb;
+use parity_bn::{AffineG1, Fr, G2};
 
 use super::{
     error::PlonkError,
     kzg::{self, BatchOpeningProof, LineEvaluationAff, OpeningProof, E2},
-    utility,
     verify::PlonkVerifyingKey,
     PlonkProof,
 };
 
-// Original imports (replaced by parity-bn helpers below):
-// use crate::converter::{
-//     unchecked_compressed_x_to_g1_point, unchecked_compressed_x_to_g2_point,
-//     uncompressed_bytes_to_g1_point,
-// };
+// Original: used crate::converter::{unchecked_compressed_x_to_g1_point, ...}
+// Now reimplemented directly using parity-bn.
 
 /// Parses a gnark-format compressed G1 point (32 bytes) using parity-bn.
 ///
@@ -44,8 +40,7 @@ fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
     x_bytes.copy_from_slice(buf);
     x_bytes[0] &= !MASK;
 
-    let x = pb::Fq::from_slice(&x_bytes)
-        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+    let x = pb::Fq::from_slice(&x_bytes).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
 
     let b = pb::G1::b();
     let y_squared = x * x * x + b;
@@ -57,15 +52,20 @@ fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
 
     // COMPRESSED_POSITIVE → smaller y; COMPRESSED_NEGATIVE → larger y
     let final_y = if m_data == COMPRESSED_NEGATIVE {
-        if y_u256 > neg_y_u256 { y } else { neg_y }
+        if y_u256 > neg_y_u256 {
+            y
+        } else {
+            neg_y
+        }
     } else {
-        if y_u256 > neg_y_u256 { neg_y } else { y }
+        if y_u256 > neg_y_u256 {
+            neg_y
+        } else {
+            y
+        }
     };
 
-    let pb_affine = pb::AffineG1::new(x, final_y)
-        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
-
-    utility::pb_affine_g1_to_sb(pb_affine)
+    pb::AffineG1::new(x, final_y).map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))
 }
 
 /// Parses a gnark-format compressed G2 point (64 bytes) using parity-bn.
@@ -73,7 +73,7 @@ fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
 /// Layout: `[x_imag_32 (with flag) | x_real_32]`
 /// - `COMPRESSED_POSITIVE` (0x80) → use the smaller y (by Fq2 lexicographic order)
 /// - `COMPRESSED_NEGATIVE` (0xC0) → use the larger y
-fn parse_compressed_g2(buf: &[u8]) -> Result<bn::AffineG2, PlonkError> {
+fn parse_compressed_g2(buf: &[u8]) -> Result<pb::AffineG2, PlonkError> {
     // Original: crate::converter::unchecked_compressed_x_to_g2_point(buf).map_err(PlonkError::GeneralError)
     if buf.len() != 64 {
         return Err(PlonkError::GeneralError(Error::InvalidXLength));
@@ -83,7 +83,9 @@ fn parse_compressed_g2(buf: &[u8]) -> Result<bn::AffineG2, PlonkError> {
 
     if m_data == COMPRESSED_INFINITY {
         if buf[0] & !MASK == 0 && buf[1..].iter().all(|&b| b == 0) {
-            return Ok(bn::AffineG2::zero());
+            // Point at infinity: return G2::zero() converted to affine
+            // (This case shouldn't occur in valid PLONK proofs.)
+            return Err(PlonkError::GeneralError(Error::InvalidPoint));
         }
         return Err(PlonkError::GeneralError(Error::InvalidPoint));
     }
@@ -96,10 +98,10 @@ fn parse_compressed_g2(buf: &[u8]) -> Result<bn::AffineG2, PlonkError> {
     xi_bytes.copy_from_slice(&buf[..32]);
     xi_bytes[0] &= !MASK;
 
-    let x_imag = pb::Fq::from_slice(&xi_bytes)
-        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
-    let x_real = pb::Fq::from_slice(&buf[32..64])
-        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+    let x_imag =
+        pb::Fq::from_slice(&xi_bytes).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
+    let x_real =
+        pb::Fq::from_slice(&buf[32..64]).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
 
     let x = pb::Fq2::new(x_real, x_imag);
 
@@ -112,20 +114,29 @@ fn parse_compressed_g2(buf: &[u8]) -> Result<bn::AffineG2, PlonkError> {
     let y_gt_neg_y = {
         let yi = y.imaginary().into_u256();
         let nyi = neg_y.imaginary().into_u256();
-        if yi != nyi { yi > nyi } else { y.real().into_u256() > neg_y.real().into_u256() }
+        if yi != nyi {
+            yi > nyi
+        } else {
+            y.real().into_u256() > neg_y.real().into_u256()
+        }
     };
 
     // COMPRESSED_POSITIVE → smaller y; COMPRESSED_NEGATIVE → larger y
     let final_y = if m_data == COMPRESSED_NEGATIVE {
-        if y_gt_neg_y { y } else { neg_y }
+        if y_gt_neg_y {
+            y
+        } else {
+            neg_y
+        }
     } else {
-        if y_gt_neg_y { neg_y } else { y }
+        if y_gt_neg_y {
+            neg_y
+        } else {
+            y
+        }
     };
 
-    let pb_affine = pb::AffineG2::new(x, final_y)
-        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
-
-    utility::pb_affine_g2_to_sb(pb_affine)
+    pb::AffineG2::new(x, final_y).map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))
 }
 
 /// Parses an uncompressed G1 point (64 bytes: x_32 || y_32) using parity-bn.
@@ -135,15 +146,12 @@ fn parse_uncompressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
         return Err(PlonkError::GeneralError(Error::InvalidXLength));
     }
 
-    let x = pb::Fq::from_slice(&buf[..32])
-        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
-    let y = pb::Fq::from_slice(&buf[32..64])
-        .map_err(|e| PlonkError::GeneralError(Error::Field(utility::map_pb_field_err(e))))?;
+    let x =
+        pb::Fq::from_slice(&buf[..32]).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
+    let y =
+        pb::Fq::from_slice(&buf[32..64]).map_err(|e| PlonkError::GeneralError(Error::Field(e)))?;
 
-    let pb_affine = pb::AffineG1::new(x, y)
-        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
-
-    utility::pb_affine_g1_to_sb(pb_affine)
+    pb::AffineG1::new(x, y).map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))
 }
 
 pub(crate) fn load_plonk_verifying_key_from_bytes(
@@ -359,8 +367,15 @@ pub(crate) fn load_plonk_proof_from_bytes(
 }
 
 pub(crate) fn g1_to_bytes(g1: &AffineG1) -> Result<Vec<u8>, PlonkError> {
-    let mut bytes: [u8; 64] = unsafe { core::mem::transmute(*g1) };
-    bytes[..32].reverse();
-    bytes[32..].reverse();
+    // Original: unsafe { transmute } then reverse each 32-byte half.
+    // (That worked for substrate-bn's standard form; parity-bn uses Montgomery form
+    // internally, so we must use to_big_endian for canonical serialization.)
+    let mut bytes = [0u8; 64];
+    g1.x()
+        .to_big_endian(&mut bytes[..32])
+        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
+    g1.y()
+        .to_big_endian(&mut bytes[32..])
+        .map_err(|_| PlonkError::GeneralError(Error::InvalidPoint))?;
     Ok(bytes.to_vec())
 }

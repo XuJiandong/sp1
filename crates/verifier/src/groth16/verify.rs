@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use bn::{pairing_batch, AffineG1, AffineG2, Fr, Gt, G1, G2};
+use parity_bn::{pairing_batch, AffineG1, AffineG2, Fr, Gt, G1, G2};
 
 use super::error::Groth16Error;
 
@@ -39,17 +39,19 @@ fn prepare_inputs(vk: Groth16VerifyingKey, public_inputs: &[Fr]) -> Result<G1, G
         return Err(Groth16Error::PrepareInputsFailed);
     }
 
-    Ok(public_inputs
-        .iter()
-        .zip(vk.g1.k.iter().skip(1))
-        .fold(vk.g1.k[0], |acc, (i, b)| if *i != Fr::zero() { acc + (*b * *i) } else { acc })
-        .into())
+    Ok(public_inputs.iter().zip(vk.g1.k.iter().skip(1)).fold(
+        G1::from(vk.g1.k[0]),
+        |acc, (i, b)| {
+            if *i != Fr::zero() {
+                acc + G1::from(*b) * *i
+            } else {
+                acc
+            }
+        },
+    ))
 }
 
 /// Verify the Groth16 proof using algebraic inputs.
-///
-/// First, prepare the public inputs by folding them with the verification key.
-/// Then, verify the proof by checking the pairing equation.
 pub(crate) fn verify_groth16_algebraic(
     vk: &Groth16VerifyingKey,
     proof: &Groth16Proof,
@@ -58,10 +60,10 @@ pub(crate) fn verify_groth16_algebraic(
     let prepared_inputs = prepare_inputs(vk.clone(), public_inputs)?;
 
     if pairing_batch(&[
-        (-Into::<G1>::into(proof.ar), proof.bs.into()),
-        (prepared_inputs, vk.g2.gamma.into()),
-        (proof.krs.into(), vk.g2.delta.into()),
-        (vk.g1.alpha.into(), -Into::<G2>::into(vk.g2.beta)),
+        (-G1::from(proof.ar), G2::from(proof.bs)),
+        (prepared_inputs, G2::from(vk.g2.gamma)),
+        (G1::from(proof.krs), G2::from(vk.g2.delta)),
+        (G1::from(vk.g1.alpha), G2::from(vk.g2.beta)),
     ]) == Gt::one()
     {
         Ok(())

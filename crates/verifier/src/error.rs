@@ -1,4 +1,4 @@
-use bn::{CurveError, FieldError, GroupError};
+use parity_bn::{CurveError, FieldError, GroupError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -18,11 +18,11 @@ pub enum Error {
     FailedToGetFrFromRandomBytes,
 
     // External Library Errors
-    #[error("BN254 Field Error: {0}")]
+    #[error("BN254 Field Error: {0:?}")]
     Field(FieldError),
-    #[error("BN254 Group Error: {0}")]
+    #[error("BN254 Group Error: {0:?}")]
     Group(GroupError),
-    #[error("BN254 Curve Error: {0}")]
+    #[error("BN254 Curve Error: {0:?}")]
     Curve(CurveError),
 
     // SP1 Errors

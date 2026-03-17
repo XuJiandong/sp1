@@ -30,6 +30,8 @@ bn = { version = "=0.6.0", package = "substrate-bn-succinct-rs" }
 - Only modify `verify_gnark_proof` and its nested functions.
 - Keep the original code as comments after each change to make it easy to review.
 - Place utility functions (e.g., conversions between `parity-bn` and `substrate-bn` types) in `src/plonk/utility.rs`.
+- Maintain original file/code structure. Put extra code in `src/plonk/utility.rs`
+
 
 ## How to Build
 
@@ -38,3 +40,11 @@ cd crates/verifier
 CLANG=clang-19 cargo build --target=riscv64imac-unknown-none-elf --no-default-features
 ```
 Don't try to run original unit tests: It can't pass(no problem).
+
+When building is successful, use `cargo fmt` in folder `crates/verifier`
+
+## Pass Criteria
+1. All substrate-bn code is replaced by parity-bn, with no remaining dependency on substrate-bn.
+2. The project builds successfully.
+3. Running test cases is not required, as the build target is RISC-V and the tests target native.
+

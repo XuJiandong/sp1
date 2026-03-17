@@ -14,8 +14,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 parity-bn = { version = "0.1.3", package = "ckb-alt-bn128" }
-ckb-std = { version = "1.0.2", default-features = false, features = ["allocator", "dummy-atomic"]} 
-bn = { version = "=0.6.0", package = "substrate-bn-succinct-rs" }
+ckb-std = { version = "1.0.2", default-features = false, features = ["allocator", "dummy-atomic"]}
 sha2 = { version = "0.10.8", default-features = false }
 thiserror = { version = "2", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }

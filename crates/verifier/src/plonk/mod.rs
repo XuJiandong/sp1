@@ -19,10 +19,10 @@ pub(crate) use proof::PlonkProof;
 pub(crate) use verify::verify_plonk_algebraic;
 
 use alloc::vec::Vec;
-use bn::Fr;
 use ckb_std::debug;
 use ckb_std::syscalls::current_cycles;
 use error::PlonkError;
+use parity_bn::Fr;
 use sha2::{Digest, Sha256};
 
 use crate::{

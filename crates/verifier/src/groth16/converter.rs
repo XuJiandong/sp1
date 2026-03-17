@@ -58,8 +58,12 @@ pub(crate) fn load_groth16_verifying_key_from_bytes(
         offset += 32;
     }
 
+    // Original: beta: -g2_beta (substrate-bn had Neg for AffineG2; use G2 negation instead)
+    let neg_g2_beta = parity_bn::AffineG2::from_jacobian(-parity_bn::G2::from(g2_beta))
+        .expect("negation of beta G2 cannot produce point at infinity");
+
     Ok(Groth16VerifyingKey {
         g1: Groth16G1 { alpha: g1_alpha, k },
-        g2: Groth16G2 { beta: -g2_beta, gamma: g2_gamma, delta: g2_delta },
+        g2: Groth16G2 { beta: neg_g2_beta, gamma: g2_gamma, delta: g2_delta },
     })
 }
