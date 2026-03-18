@@ -5,7 +5,10 @@ use crate::{
     error::Error,
 };
 
-/// Compresses a G1 point to a buffer.
+/// Compresse an G1 point to a buffer.
+///
+/// This is a reveresed function against `unchecked_compressed_x_to_g1_point`, return the compressed
+/// G1 point which hardcoded the sign flag of y coordinate.
 pub fn compress_g1_point_to_x(g1: &AffineG1) -> Result<[u8; 32], Error> {
     let mut x_bytes = [0u8; 32];
     g1.x().to_big_endian(&mut x_bytes).map_err(Error::Field)?;
@@ -19,7 +22,10 @@ pub fn compress_g1_point_to_x(g1: &AffineG1) -> Result<[u8; 32], Error> {
     Ok(x_bytes)
 }
 
-/// Compresses a G2 point to a buffer.
+/// Compresse an G2 point to a buffer.
+///
+/// This is a reveresed function against `unchecked_compressed_x_to_g1_point`, return the compressed
+/// G2 point which hardcoded the sign flag of y coordinate.
 pub fn compress_g2_point_to_x(g2: &AffineG2) -> Result<[u8; 64], Error> {
     let mut x_bytes = [0u8; 64];
     g2.x().imaginary().to_big_endian(&mut x_bytes[..32]).map_err(Error::Field)?;
@@ -46,17 +52,23 @@ pub fn compress_g2_point_to_x(g2: &AffineG2) -> Result<[u8; 64], Error> {
     Ok(x_bytes)
 }
 
-/// Deserializes an Fq element from a buffer, returning the flag from the top 2 bits.
+/// Deserializes an Fq element from a buffer.
+///
+/// If this Fq element is part of a compressed point, the flag that indicates the sign of the
+/// y coordinate is also returned.
 pub(crate) fn deserialize_with_flags(buf: &[u8]) -> Result<(Fq, CompressedPointFlag), Error> {
     if buf.len() != 32 {
         return Err(Error::InvalidXLength);
     };
 
     let m_data = buf[0] & MASK;
+    // Here, the possible values for `m_data` is `0, 64, 128, 192`. If `m_data == 0`, it doesn't
+    // match any possible compressed point flags shown in `CompressedPointFlag`, so return error.
     if m_data == 0 {
         return Err(Error::InvalidPoint);
     }
     if m_data == u8::from(CompressedPointFlag::Infinity) {
+        // Checks if the first byte is zero after masking AND the rest of the bytes are zero.
         if buf[0] & !MASK == 0 && buf[1..].iter().all(|&b| b == 0) {
             return Ok((Fq::zero(), CompressedPointFlag::Infinity));
         }
@@ -73,6 +85,10 @@ pub(crate) fn deserialize_with_flags(buf: &[u8]) -> Result<(Fq, CompressedPointF
 }
 
 /// Converts a compressed G1 point to an AffineG1 point.
+///
+/// Asserts that the compressed point is represented as a single fq element: the x coordinate
+/// of the point. The y coordinate is then computed from the x coordinate. The final point
+/// is not checked to be on the curve for efficiency.
 pub fn unchecked_compressed_x_to_g1_point(buf: &[u8]) -> Result<AffineG1, Error> {
     let (x, m_data) = deserialize_with_flags(buf)?;
 
@@ -103,6 +119,8 @@ pub fn unchecked_compressed_x_to_g1_point(buf: &[u8]) -> Result<AffineG1, Error>
 }
 
 /// Converts an uncompressed G1 point to an AffineG1 point.
+///
+/// Asserts that the affine point is represented as two fq elements.
 pub fn uncompressed_bytes_to_g1_point(buf: &[u8]) -> Result<AffineG1, Error> {
     if buf.len() != 64 {
         return Err(Error::InvalidXLength);
@@ -116,6 +134,8 @@ pub fn uncompressed_bytes_to_g1_point(buf: &[u8]) -> Result<AffineG1, Error> {
 }
 
 /// Converts an AffineG1 point to an uncompressed byte array.
+///
+/// The uncompressed byte array is represented as two fq elements.
 pub fn g1_point_to_uncompressed_bytes(point: &AffineG1) -> Result<[u8; 64], Error> {
     let mut buffer = [0u8; 64];
     point.x().to_big_endian(&mut buffer[..32]).map_err(Error::Field)?;
@@ -125,6 +145,11 @@ pub fn g1_point_to_uncompressed_bytes(point: &AffineG1) -> Result<[u8; 64], Erro
 }
 
 /// Converts a compressed G2 point to an AffineG2 point.
+///
+/// Asserts that the compressed point is represented as a single fq2 element: the x coordinate
+/// of the point.
+/// Then, gets the y coordinate from the x coordinate.
+/// For efficiency, this function does not check that the final point is on the curve.
 pub fn unchecked_compressed_x_to_g2_point(buf: &[u8]) -> Result<AffineG2, Error> {
     if buf.len() != 64 {
         return Err(Error::InvalidXLength);
@@ -153,6 +178,8 @@ pub fn unchecked_compressed_x_to_g2_point(buf: &[u8]) -> Result<AffineG2, Error>
 }
 
 /// Converts an uncompressed G2 point to an AffineG2 point.
+///
+/// Asserts that the affine point is represented as two fq2 elements.
 pub fn uncompressed_bytes_to_g2_point(buf: &[u8]) -> Result<AffineG2, Error> {
     if buf.len() != 128 {
         return Err(Error::InvalidXLength);
@@ -174,6 +201,8 @@ pub fn uncompressed_bytes_to_g2_point(buf: &[u8]) -> Result<AffineG2, Error> {
 }
 
 /// Converts an AffineG2 point to an uncompressed byte array.
+///
+/// The uncompressed byte array is represented as two fq2 elements.
 pub fn g2_point_to_uncompressed_bytes(point: &AffineG2) -> Result<[u8; 128], Error> {
     let mut buffer = [0u8; 128];
     point.x().imaginary().to_big_endian(&mut buffer[..32]).map_err(Error::Field)?;

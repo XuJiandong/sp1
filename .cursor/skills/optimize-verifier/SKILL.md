@@ -31,7 +31,7 @@ bn = { version = "=0.6.0", package = "substrate-bn-succinct-rs" }
 - Keep the original code as comments after each change to make it easy to review.
 - Place utility functions (e.g., conversions between `parity-bn` and `substrate-bn` types) in `src/plonk/utility.rs`.
 - Maintain original file/code structure. Put extra code in `src/plonk/utility.rs`
-
+- Keep original comments if possible.
 
 ## How to Build
 
