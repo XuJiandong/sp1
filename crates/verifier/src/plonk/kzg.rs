@@ -81,8 +81,7 @@ fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> (AffineG1, Fr) {
     let mut folded_evaluations = Fr::zero();
 
     for i in 0..nb_digests {
-        // Original: folded_evaluations += fai[i] * ci[i]
-        folded_evaluations = folded_evaluations + fai[i] * ci[i];
+        folded_evaluations += fai[i] * ci[i];
     }
 
     // Original: AffineG1::msm(&di, &ci)
@@ -178,8 +177,7 @@ pub(crate) fn batch_verify_multi_points(
     folded_digests = utility::affine_g1_sub(folded_digests, folded_evals_commit_affine)?;
 
     for i in 0..random_numbers.len() {
-        // Original: random_numbers[i] *= points[i]
-        random_numbers[i] = random_numbers[i] * points[i];
+        random_numbers[i] *= points[i];
     }
     // Original: AffineG1::msm(&quotients, &random_numbers)
     let folded_points_quotients = utility::affine_g1_msm(&quotients, &random_numbers);

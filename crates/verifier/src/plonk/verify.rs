@@ -106,9 +106,8 @@ pub(crate) fn verify_plonk_algebraic(
 
     // Compute Lagrange polynomial at ζ: L₁(ζ) = (ζⁿ - 1) / (n * (ζ - 1))
     let mut lagrange_one = (zeta - one).inverse().ok_or(PlonkError::InverseNotFound)?;
-    // Original: lagrange_one *= zh_zeta; lagrange_one *= vk.size_inv
-    lagrange_one = lagrange_one * zh_zeta;
-    lagrange_one = lagrange_one * vk.size_inv;
+    lagrange_one *= zh_zeta;
+    lagrange_one *= vk.size_inv;
 
     // Compute PI = ∑_{i<n} Lᵢ(ζ) * wᵢ
     let mut pi = Fr::zero();
@@ -118,14 +117,12 @@ pub(crate) fn verify_plonk_algebraic(
     // Compute [ζ-1, ζ-ω, ζ-ω², ...]
     for _ in 0..public_inputs.len() {
         let mut temp = zeta;
-        // Original: temp -= accw
-        temp = temp - accw;
+        temp -= accw;
         if temp.is_zero() {
             return Err(PlonkError::InverseNotFound);
         }
         dens.push(temp);
-        // Original: accw *= vk.generator
-        accw = accw * vk.generator;
+        accw *= vk.generator;
     }
 
     // Compute [1/(ζ-1), 1/(ζ-ω), 1/(ζ-ω²), ...]
@@ -136,15 +133,12 @@ pub(crate) fn verify_plonk_algebraic(
     for (i, public_input) in public_inputs.iter().enumerate() {
         // Compute Lᵢ(ζ) * wᵢ = (ζⁿ - 1) / (n * (ζ - ωⁱ)) * wᵢ
         xi_li = zh_zeta;
-        // Original: xi_li *= inv_dens[i]; xi_li *= vk.size_inv; xi_li *= accw; xi_li *= *public_input
-        xi_li = xi_li * inv_dens[i];
-        xi_li = xi_li * vk.size_inv;
-        xi_li = xi_li * accw;
-        xi_li = xi_li * *public_input;
-        // Original: accw *= vk.generator
-        accw = accw * vk.generator;
-        // Original: pi += xi_li
-        pi = pi + xi_li;
+        xi_li *= inv_dens[i];
+        xi_li *= vk.size_inv;
+        xi_li *= accw;
+        xi_li *= *public_input;
+        accw *= vk.generator;
+        pi += xi_li;
     }
 
     // Handle BSB22 commitments
@@ -162,22 +156,18 @@ pub(crate) fn verify_plonk_algebraic(
         let exponent = Fr::new(exponent).ok_or(PlonkError::BeyondTheModulus)?;
         let w_pow_i = vk.generator.pow(exponent);
         let mut den = zeta;
-        // Original: den -= w_pow_i
-        den = den - w_pow_i;
+        den -= w_pow_i;
         if den.is_zero() {
             return Err(PlonkError::InverseNotFound);
         }
         let mut lagrange = zh_zeta;
-        // Original: lagrange *= w_pow_i; lagrange /= den; lagrange *= vk.size_inv
-        lagrange = lagrange * w_pow_i;
+        lagrange *= w_pow_i;
         lagrange = lagrange * den.inverse().ok_or(PlonkError::InverseNotFound)?;
-        lagrange = lagrange * vk.size_inv;
+        lagrange *= vk.size_inv;
 
         xi_li = lagrange;
-        // Original: xi_li *= hashed_cmt
-        xi_li = xi_li * hashed_cmt;
-        // Original: pi += xi_li
-        pi = pi + xi_li;
+        xi_li *= hashed_cmt;
+        pi += xi_li;
     }
 
     // Extract claimed values from the proof
@@ -192,9 +182,8 @@ pub(crate) fn verify_plonk_algebraic(
     // Compute α²*L₁(ζ)
     let alpha_square_lagrange_one = {
         let mut tmp = lagrange_one;
-        // Original: tmp *= alpha; tmp *= alpha
-        tmp = tmp * alpha;
-        tmp = tmp * alpha;
+        tmp *= alpha;
+        tmp *= alpha;
         tmp
     };
 
@@ -202,31 +191,27 @@ pub(crate) fn verify_plonk_algebraic(
     // -[PI(ζ) - α²*L₁(ζ) + α(l(ζ)+β*s1(ζ)+γ)(r(ζ)+β*s2(ζ)+γ)(o(ζ)+γ)*z(ωζ)]
 
     let mut tmp = beta;
-    // Original: tmp *= s1; tmp += gamma; tmp += l
-    tmp = tmp * s1;
-    tmp = tmp + gamma;
-    tmp = tmp + l;
+    tmp *= s1;
+    tmp += gamma;
+    tmp += l;
     let mut const_lin = tmp;
 
     tmp = beta;
-    // Original: tmp *= s2; tmp += gamma; tmp += r
-    tmp = tmp * s2;
-    tmp = tmp + gamma;
-    tmp = tmp + r;
+    tmp *= s2;
+    tmp += gamma;
+    tmp += r;
 
-    const_lin = const_lin * tmp;
+    const_lin *= tmp;
 
     tmp = o;
-    // Original: tmp += gamma
-    tmp = tmp + gamma;
+    tmp += gamma;
 
-    const_lin = const_lin * tmp;
-    const_lin = const_lin * alpha;
-    const_lin = const_lin * zu;
+    const_lin *= tmp;
+    const_lin *= alpha;
+    const_lin *= zu;
 
-    // Original: const_lin -= alpha_square_lagrange_one; const_lin += pi
-    const_lin = const_lin - alpha_square_lagrange_one;
-    const_lin = const_lin + pi;
+    const_lin -= alpha_square_lagrange_one;
+    const_lin += pi;
 
     const_lin = -const_lin;
 
@@ -239,10 +224,10 @@ pub(crate) fn verify_plonk_algebraic(
     // _s2 = -α*(l(ζ)+β*ζ+γ)*(r(ζ)+β*u*ζ+γ)*(o(ζ)+β*u²*ζ+γ)
     let mut _s2 = beta * zeta + gamma + l;
     let mut tmp = beta * vk.coset_shift * zeta + gamma + r;
-    _s2 = _s2 * tmp;
+    _s2 *= tmp;
     tmp = beta * vk.coset_shift * vk.coset_shift * zeta + gamma + o;
-    _s2 = _s2 * tmp;
-    _s2 = _s2 * alpha;
+    _s2 *= tmp;
+    _s2 *= alpha;
     _s2 = -_s2;
 
     // coeff_z = α²*L₁(ζ) - α*(l(ζ)+β*ζ+γ)*(r(ζ)+β*u*ζ+γ)*(o(ζ)+β*u²*ζ+γ)
@@ -259,10 +244,10 @@ pub(crate) fn verify_plonk_algebraic(
     let mut zeta_n_plus_two_zh = zeta.pow(n_plus_two);
     // -ζⁿ⁺²*(ζⁿ-1)
     let mut zeta_n_plus_two_square_zh = zeta_n_plus_two_zh * zeta_n_plus_two_zh;
-    zeta_n_plus_two_zh = zeta_n_plus_two_zh * zh_zeta;
+    zeta_n_plus_two_zh *= zh_zeta;
     zeta_n_plus_two_zh = -zeta_n_plus_two_zh;
     // -ζ²⁽ⁿ⁺²⁾*(ζⁿ-1)
-    zeta_n_plus_two_square_zh = zeta_n_plus_two_square_zh * zh_zeta;
+    zeta_n_plus_two_square_zh *= zh_zeta;
     zeta_n_plus_two_square_zh = -zeta_n_plus_two_square_zh;
     // -(ζⁿ-1)
     let zh = -zh_zeta;
@@ -419,14 +404,14 @@ fn batch_inversion_and_mul(v: &mut [Fr], coeff: &Fr) {
     let mut prod = Vec::with_capacity(v.len());
     let mut tmp = Fr::one();
     for f in v.iter().filter(|f| !f.is_zero()) {
-        tmp = tmp * *f;
+        tmp *= *f;
         prod.push(tmp);
     }
 
     // This doesn't panic, as the above loop skips `f == 0`.
     tmp = tmp.inverse().unwrap();
 
-    tmp = tmp * *coeff;
+    tmp *= *coeff;
 
     for (f, s) in v
         .iter_mut()

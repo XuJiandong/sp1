@@ -1867,9 +1867,9 @@ dependencies = [
 
 [[package]]
 name = "ckb-alt-bn128"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb67d84a14217165e19ffbbaa6223ea40c2799e46946b6830e6b4aeab6a520bd"
+checksum = "fa37c950768809e8ae16dd8d94c09a3eae0894eb40890f4a78f3650c746c06c9"
 dependencies = [
  "cc",
 ]
