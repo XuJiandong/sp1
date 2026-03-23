@@ -73,10 +73,10 @@ pub(crate) fn affine_g1_msm(points: &[pb::AffineG1], scalars: &[pb::Fr]) -> pb::
 
     for window in 0..64u8 {
         // Double the accumulator 4 times (shift left by 4 bits).
-        acc = acc + acc;
-        acc = acc + acc;
-        acc = acc + acc;
-        acc = acc + acc;
+        acc = acc.double();
+        acc = acc.double();
+        acc = acc.double();
+        acc = acc.double();
 
         // Extract the 4-bit nibble for this window from each scalar,
         // then add the corresponding precomputed multiple.
