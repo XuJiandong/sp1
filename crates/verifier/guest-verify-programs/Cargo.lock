@@ -214,9 +214,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "ckb-alt-bn128"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa37c950768809e8ae16dd8d94c09a3eae0894eb40890f4a78f3650c746c06c9"
+checksum = "a4236225e4d1723d2681c597b489ce715249721bd1c2f52dcf8c152d0a9874b5"
 dependencies = [
  "cc",
 ]
