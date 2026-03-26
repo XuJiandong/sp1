@@ -34,6 +34,7 @@ members = [
   "crates/sdk",
   "crates/test-artifacts",
   "crates/verifier",
+  "crates/verifier-comparative-tests",
   "crates/zkvm/*",
   "slop/crates/air",
   "slop/crates/algebra",
