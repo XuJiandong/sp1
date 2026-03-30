@@ -25,7 +25,7 @@ use super::{
 /// The gnark format encodes the sign flag in the top 2 bits of the first byte:
 /// - `COMPRESSED_POSITIVE` (0x80) → use the smaller y coordinate
 /// - `COMPRESSED_NEGATIVE` (0xC0) → use the larger y coordinate
-fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
+pub fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
     // Original: crate::converter::unchecked_compressed_x_to_g1_point(buf).map_err(PlonkError::GeneralError)
     if buf.len() != 32 {
         return Err(PlonkError::GeneralError(Error::InvalidXLength));
@@ -73,7 +73,7 @@ fn parse_compressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
 /// Layout: `[x_imag_32 (with flag) | x_real_32]`
 /// - `COMPRESSED_POSITIVE` (0x80) → use the smaller y (by Fq2 lexicographic order)
 /// - `COMPRESSED_NEGATIVE` (0xC0) → use the larger y
-fn parse_compressed_g2(buf: &[u8]) -> Result<pb::AffineG2, PlonkError> {
+pub fn parse_compressed_g2(buf: &[u8]) -> Result<pb::AffineG2, PlonkError> {
     // Original: crate::converter::unchecked_compressed_x_to_g2_point(buf).map_err(PlonkError::GeneralError)
     if buf.len() != 64 {
         return Err(PlonkError::GeneralError(Error::InvalidXLength));
@@ -140,7 +140,7 @@ fn parse_compressed_g2(buf: &[u8]) -> Result<pb::AffineG2, PlonkError> {
 }
 
 /// Parses an uncompressed G1 point (64 bytes: x_32 || y_32) using parity-bn.
-fn parse_uncompressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
+pub fn parse_uncompressed_g1(buf: &[u8]) -> Result<AffineG1, PlonkError> {
     // Original: crate::converter::uncompressed_bytes_to_g1_point(buf).map_err(PlonkError::GeneralError)
     if buf.len() != 64 {
         return Err(PlonkError::GeneralError(Error::InvalidXLength));
@@ -366,7 +366,7 @@ pub(crate) fn load_plonk_proof_from_bytes(
     Ok(result)
 }
 
-pub(crate) fn g1_to_bytes(g1: &AffineG1) -> Result<Vec<u8>, PlonkError> {
+pub fn g1_to_bytes(g1: &AffineG1) -> Result<Vec<u8>, PlonkError> {
     // Original: unsafe { transmute } then reverse each 32-byte half.
     // (That worked for substrate-bn's standard form; parity-bn uses Montgomery form
     // internally, so we must use to_big_endian for canonical serialization.)

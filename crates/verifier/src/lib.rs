@@ -41,7 +41,7 @@ mod groth16;
 pub use groth16::ark_converter::*;
 
 pub use plonk::{error::PlonkError, PlonkVerifier};
-mod plonk;
+pub mod plonk;
 
 #[cfg(all(test, feature = "std"))]
 mod tests;

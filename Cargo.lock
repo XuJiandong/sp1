@@ -1880,10 +1880,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ckb-alt-bn128"
+name = "ckb-alt-bn128-compatible"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4236225e4d1723d2681c597b489ce715249721bd1c2f52dcf8c152d0a9874b5"
+checksum = "2fcbd6088a0f00f4285baf3b40b6e1971ac69a5a30945340cb00308b74bba5b9"
 dependencies = [
  "cc",
 ]
@@ -1950,15 +1950,6 @@ name = "clap_lex"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
-
-[[package]]
-name = "cloudabi"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
-dependencies = [
- "bitflags 1.3.2",
-]
 
 [[package]]
 name = "cmake"
@@ -2850,12 +2841,6 @@ name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
-
-[[package]]
-name = "fuchsia-cprng"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 
 [[package]]
 name = "funty"
@@ -4634,17 +4619,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parity-bn"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e24823672c90534d32e14dbdc5732c19dccfb45a68b692c1ee1151037a85d81"
-dependencies = [
- "byteorder",
- "crunchy",
- "rand 0.5.6",
-]
-
-[[package]]
 name = "parity-scale-codec"
 version = "3.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5134,19 +5108,6 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c618c47cd3ebd209790115ab837de41425723956ad3ce2e6a7f09890947cacb9"
-dependencies = [
- "cloudabi",
- "fuchsia-cprng",
- "libc",
- "rand_core 0.3.1",
- "winapi",
-]
-
-[[package]]
-name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
@@ -5187,21 +5148,6 @@ dependencies = [
  "ppv-lite86",
  "rand_core 0.9.5",
 ]
-
-[[package]]
-name = "rand_core"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
-dependencies = [
- "rand_core 0.4.2",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
 
 [[package]]
 name = "rand_core"
@@ -7781,7 +7727,7 @@ dependencies = [
  "bincode",
  "blake3",
  "cfg-if",
- "ckb-alt-bn128",
+ "ckb-alt-bn128-compatible",
  "ckb-std",
  "dirs",
  "hex",
@@ -8857,8 +8803,9 @@ dependencies = [
 name = "verifier-comparative-tests"
 version = "0.1.0"
 dependencies = [
- "parity-bn",
+ "ckb-alt-bn128-compatible",
  "proptest",
+ "sp1-verifier",
  "substrate-bn-succinct-rs",
 ]
 

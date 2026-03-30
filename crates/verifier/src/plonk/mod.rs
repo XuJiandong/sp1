@@ -4,15 +4,15 @@ pub(crate) const ALPHA: &str = "alpha";
 pub(crate) const ZETA: &str = "zeta";
 pub(crate) const U: &str = "u";
 
-mod converter;
+pub mod converter;
 mod hash_to_field;
 mod kzg;
 mod proof;
 mod transcript;
-mod utility;
+pub mod utility;
 mod verify;
 
-pub(crate) mod error;
+pub mod error;
 
 pub(crate) use converter::{load_plonk_proof_from_bytes, load_plonk_verifying_key_from_bytes};
 pub(crate) use proof::PlonkProof;
