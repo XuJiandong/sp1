@@ -6,20 +6,22 @@ The original SP1 verifier lacks `no_std` support and has high cycle counts (~600
 
 ## Changes
 
+The code lives on this [branch](https://github.com/XuJiandong/sp1/tree/no-std-v6), primarily in the `crates/verifier` folder.
+
 Key modifications from the original:
 
 1. Replaced the bn254 (alt\_bn128) elliptic curve implementation with the highly optimized [ckb-alt-bn128](https://crates.io/crates/ckb-alt-bn128)
 2. Ported to `no_std` Rust
-3. Only the Plonk verifier has been updated; Groth16 is not ported or optimized
+3. Only the Plonk verifier has been updated; Groth16 is not optimized
 
-As a result, cycle count for a single verification is reduced from ~1000M to ~63M, with a binary size of 246 KB — viable for on-chain use on ckb-vm.
+As a result, cycle count for a single verification is reduced from ~6000M to ~63M, with a binary size of 246 KB — viable for on-chain use on ckb-vm.
 
 ## Usage
 
 Add the dependency to your `Cargo.toml`:
 
 ```toml
-sp1-verifier = { git = "https://github.com/XuJiandong/sp1.git", default-features = false, rev = "f5586e9" }
+sp1-verifier = { git = "https://github.com/XuJiandong/sp1.git", default-features = false, rev = "0cc2b42" }
 ```
 
 Example:
