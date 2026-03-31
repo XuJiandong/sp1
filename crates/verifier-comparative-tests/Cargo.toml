@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dev-dependencies]
-parity-bn = { version = "0.4.4", default-features = false }
+sp1-verifier = { path = "../verifier", default-features = false }
+parity-bn = { version = "0.1.6", package = "ckb-alt-bn128-compatible" }
 bn = { version = "=0.6.0", package = "substrate-bn-succinct-rs" }
 proptest = "1"
