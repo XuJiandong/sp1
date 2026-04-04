@@ -99,6 +99,22 @@ fn sb_parse_compressed_g2(buf: &[u8; 64]) -> Result<sb::AffineG2, &'static str> 
     sb::AffineG2::new(x, final_y).map_err(|_| "invalid G2 point")
 }
 
+#[test]
+fn parse_compressed_g2_rejects_bad_lengths_and_flags() {
+    for len in [0usize, 1, 63, 65] {
+        let buf = vec![0u8; len];
+        assert!(parse_compressed_g2(&buf).is_err(), "len={len} should fail");
+    }
+
+    let mut no_flag = [0u8; 64];
+    no_flag[0] = 0x00;
+    assert!(parse_compressed_g2(&no_flag).is_err());
+
+    let mut infinity = [0u8; 64];
+    infinity[0] = 0x40;
+    assert!(parse_compressed_g2(&infinity).is_err());
+}
+
 proptest! {
     #[test]
     fn parse_compressed_g2_equiv(n in 1u64..u64::MAX) {

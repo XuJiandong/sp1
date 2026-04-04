@@ -41,10 +41,10 @@ fn g1_uncompressed(n: u64) -> [u8; 64] {
     sb_g1_to_bytes(aff)
 }
 
-fn sb_parse_g1(buf: &[u8; 64]) -> sb::AffineG1 {
-    let x = sb::Fq::from_slice(&buf[..32]).expect("valid Fq x");
-    let y = sb::Fq::from_slice(&buf[32..]).expect("valid Fq y");
-    sb::AffineG1::new(x, y).expect("point is on curve")
+fn sb_parse_uncompressed_g1(buf: &[u8; 64]) -> Result<sb::AffineG1, &'static str> {
+    let x = sb::Fq::from_slice(&buf[..32]).map_err(|_| "invalid x")?;
+    let y = sb::Fq::from_slice(&buf[32..]).map_err(|_| "invalid y")?;
+    sb::AffineG1::new(x, y).map_err(|_| "invalid point")
 }
 
 fn sb_compress_g1(p: sb::AffineG1) -> [u8; 32] {
@@ -76,13 +76,37 @@ fn sb_parse_compressed_g1(buf: &[u8; 32]) -> Result<sb::AffineG1, &'static str> 
     sb::AffineG1::new(x, final_y).map_err(|_| "invalid point")
 }
 
+#[test]
+fn parse_uncompressed_g1_rejects_bad_lengths() {
+    for len in [0usize, 1, 32, 63, 65] {
+        let buf = vec![0u8; len];
+        assert!(parse_uncompressed_g1(&buf).is_err(), "len={len} should fail");
+    }
+}
+
+#[test]
+fn parse_compressed_g1_rejects_bad_lengths_and_flags() {
+    for len in [0usize, 1, 31, 33] {
+        let buf = vec![0u8; len];
+        assert!(parse_compressed_g1(&buf).is_err(), "len={len} should fail");
+    }
+
+    let mut no_flag = [0u8; 32];
+    no_flag[0] = 0x00;
+    assert!(parse_compressed_g1(&no_flag).is_err());
+
+    let mut infinity = [0u8; 32];
+    infinity[0] = 0x40;
+    assert!(parse_compressed_g1(&infinity).is_err());
+}
+
 // #region parse_uncompressed_g1
 proptest! {
     #[test]
     fn parse_uncompressed_g1_equiv(n in 1u64..u64::MAX) {
         let buf = g1_uncompressed(n);
         let pb_pt = parse_uncompressed_g1(&buf).expect("valid uncompressed G1");
-        let sb_pt = sb_parse_g1(&buf);
+        let sb_pt = sb_parse_uncompressed_g1(&buf).expect("valid uncompressed G1");
         let pb_bytes = g1_to_bytes(&pb_pt).expect("g1_to_bytes");
         prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_pt)[..]);
     }
@@ -112,7 +136,7 @@ proptest! {
     #[test]
     fn parse_compressed_g1_equiv(n in 1u64..u64::MAX) {
         let uncompressed = g1_uncompressed(n);
-        let sb_pt = sb_parse_g1(&uncompressed);
+        let sb_pt = sb_parse_uncompressed_g1(&uncompressed).expect("valid G1");
         let compressed = sb_compress_g1(sb_pt);
 
         let pb_result = parse_compressed_g1(&compressed);
@@ -137,7 +161,7 @@ proptest! {
     fn affine_g1_neg_equiv(n in 1u64..u64::MAX) {
         let buf = g1_uncompressed(n);
         let pb_pt = parse_uncompressed_g1(&buf).expect("valid G1");
-        let sb_pt = sb_parse_g1(&buf);
+        let sb_pt = sb_parse_uncompressed_g1(&buf).expect("valid G1");
         let pb_bytes = g1_to_bytes(&affine_g1_neg(pb_pt)).expect("g1_to_bytes");
         prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(-sb_pt)[..]);
     }
@@ -153,8 +177,8 @@ proptest! {
 
         let pb_a = parse_uncompressed_g1(&buf_a).expect("valid G1");
         let pb_b = parse_uncompressed_g1(&buf_b).expect("valid G1");
-        let sb_a = sb_parse_g1(&buf_a);
-        let sb_b = sb_parse_g1(&buf_b);
+        let sb_a = sb_parse_uncompressed_g1(&buf_a).expect("valid G1");
+        let sb_b = sb_parse_uncompressed_g1(&buf_b).expect("valid G1");
 
         let pb_sum = affine_g1_add(pb_a, pb_b).expect("add should not produce identity");
         let pb_bytes = g1_to_bytes(&pb_sum).expect("g1_to_bytes");
@@ -172,8 +196,8 @@ proptest! {
 
         let pb_a = parse_uncompressed_g1(&buf_a).expect("valid G1");
         let pb_b = parse_uncompressed_g1(&buf_b).expect("valid G1");
-        let sb_a = sb_parse_g1(&buf_a);
-        let sb_b = sb_parse_g1(&buf_b);
+        let sb_a = sb_parse_uncompressed_g1(&buf_a).expect("valid G1");
+        let sb_b = sb_parse_uncompressed_g1(&buf_b).expect("valid G1");
 
         let pb_diff = affine_g1_sub(pb_a, pb_b).expect("sub should not produce identity");
         let pb_bytes = g1_to_bytes(&pb_diff).expect("g1_to_bytes");
@@ -199,7 +223,7 @@ proptest! {
         for i in 0..n {
             let buf = g1_uncompressed(point_seeds[i]);
             pb_points.push(parse_uncompressed_g1(&buf).expect("valid G1"));
-            sb_points.push(sb_parse_g1(&buf));
+            sb_points.push(sb_parse_uncompressed_g1(&buf).expect("valid G1"));
             pb_scalars.push(pb::Fr::from_slice(&scalar_bytes(scalar_seeds[i])).expect("valid Fr"));
             sb_scalars.push(sb::Fr::from_slice(&scalar_bytes(scalar_seeds[i])).expect("valid Fr"));
         }
