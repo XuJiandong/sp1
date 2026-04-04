@@ -47,26 +47,27 @@ fn g2_uncompressed(n: u64) -> [u8; 128] {
     sb_g2_to_bytes(aff)
 }
 
-fn pb_compress_g2(buf: &[u8; 128]) -> [u8; 64] {
-    let x = pb::Fq2::new(
-        pb::Fq::from_slice(&buf[32..64]).expect("x_real"),
-        pb::Fq::from_slice(&buf[..32]).expect("x_imag"),
+fn sb_compress_g2(buf: &[u8; 128]) -> [u8; 64] {
+    let x = sb::Fq2::new(
+        sb::Fq::from_slice(&buf[32..64]).expect("x_real"),
+        sb::Fq::from_slice(&buf[..32]).expect("x_imag"),
     );
-    let y = pb::Fq2::new(
-        pb::Fq::from_slice(&buf[96..128]).expect("y_real"),
-        pb::Fq::from_slice(&buf[64..96]).expect("y_imag"),
+    let y = sb::Fq2::new(
+        sb::Fq::from_slice(&buf[96..128]).expect("y_real"),
+        sb::Fq::from_slice(&buf[64..96]).expect("y_imag"),
     );
-    let pt = pb::AffineG2::new(x, y).expect("point is on curve");
-
+    let pt = sb::AffineG2::new(x, y).expect("point is on curve");
     let mut compressed = [0u8; 64];
     pt.x().imaginary().to_big_endian(&mut compressed[..32]).expect("Fq2");
     pt.x().real().to_big_endian(&mut compressed[32..64]).expect("Fq2");
 
-    let neg_y = -pt.y();
-    let yi = pt.y().imaginary().into_u256();
-    let nyi = neg_y.imaginary().into_u256();
-    let y_gt_neg_y =
-        if yi != nyi { yi > nyi } else { pt.y().real().into_u256() > neg_y.real().into_u256() };
+    let y = pt.y();
+    let neg_y = -y;
+    let y_gt_neg_y = if y.imaginary() != neg_y.imaginary() {
+        y.imaginary() > neg_y.imaginary()
+    } else {
+        y.real() > neg_y.real()
+    };
 
     if y_gt_neg_y {
         compressed[0] |= 0xC0;
@@ -102,7 +103,7 @@ proptest! {
     #[test]
     fn parse_compressed_g2_equiv(n in 1u64..u64::MAX) {
         let uncompressed = g2_uncompressed(n);
-        let compressed = pb_compress_g2(&uncompressed);
+        let compressed = sb_compress_g2(&uncompressed);
 
         let pb_result = parse_compressed_g2(&compressed);
         let sb_result = sb_parse_compressed_g2(&compressed);
