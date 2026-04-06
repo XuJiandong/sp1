@@ -99,6 +99,12 @@ fn sb_parse_compressed_g2(buf: &[u8; 64]) -> Result<sb::AffineG2, &'static str> 
     sb::AffineG2::new(x, final_y).map_err(|_| "invalid G2 point")
 }
 
+fn with_g2_flag(mut buf: [u8; 64], negative: bool) -> [u8; 64] {
+    buf[0] &= 0x3F;
+    buf[0] |= if negative { 0xC0 } else { 0x80 };
+    buf
+}
+
 #[test]
 fn parse_compressed_g2_rejects_bad_lengths_and_flags() {
     for len in [0usize, 1, 63, 65] {
@@ -136,6 +142,23 @@ proptest! {
             (Err(e), Ok(_)) => prop_assert!(false, "ckb-alt-bn128 parse failed: {e}"),
             (Ok(_), Err(e)) => prop_assert!(false, "substrate-bn parse failed: {e}"),
             (Err(_), Err(_)) => {}
+        }
+    }
+
+    #[test]
+    fn parse_compressed_g2_random_equiv(buf in any::<[u8; 64]>(), negative in any::<bool>()) {
+        let compressed = with_g2_flag(buf, negative);
+
+        let pb_result = parse_compressed_g2(&compressed);
+        let sb_result = sb_parse_compressed_g2(&compressed);
+
+        match (pb_result, sb_result) {
+            (Ok(pb_pt), Ok(sb_pt)) => {
+                prop_assert_eq!(pb_g2_to_bytes(pb_pt), sb_g2_to_bytes(sb_pt));
+            }
+            (Err(_), Err(_)) => {}
+            (Err(e), Ok(_)) => prop_assert!(false, "ckb-alt-bn128 parse failed: {e}"),
+            (Ok(_), Err(e)) => prop_assert!(false, "substrate-bn parse failed: {e}"),
         }
     }
 }

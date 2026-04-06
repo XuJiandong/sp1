@@ -76,6 +76,12 @@ fn sb_parse_compressed_g1(buf: &[u8; 32]) -> Result<sb::AffineG1, &'static str> 
     sb::AffineG1::new(x, final_y).map_err(|_| "invalid point")
 }
 
+fn with_g1_flag(mut buf: [u8; 32], negative: bool) -> [u8; 32] {
+    buf[0] &= 0x3F;
+    buf[0] |= if negative { 0xC0 } else { 0x80 };
+    buf
+}
+
 #[test]
 fn parse_uncompressed_g1_rejects_bad_lengths() {
     for len in [0usize, 1, 32, 63, 65] {
@@ -109,6 +115,22 @@ proptest! {
         let sb_pt = sb_parse_uncompressed_g1(&buf).expect("valid uncompressed G1");
         let pb_bytes = g1_to_bytes(&pb_pt).expect("g1_to_bytes");
         prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_pt)[..]);
+    }
+
+    #[test]
+    fn parse_uncompressed_g1_random_equiv(buf in any::<[u8; 64]>()) {
+        let pb_result = parse_uncompressed_g1(&buf);
+        let sb_result = sb_parse_uncompressed_g1(&buf);
+
+        match (pb_result, sb_result) {
+            (Ok(pb_pt), Ok(sb_pt)) => {
+                let pb_bytes = g1_to_bytes(&pb_pt).expect("g1_to_bytes");
+                prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_pt)[..]);
+            }
+            (Err(_), Err(_)) => {}
+            (Err(e), Ok(_)) => prop_assert!(false, "ckb-alt-bn128 failed: {e}"),
+            (Ok(_), Err(e)) => prop_assert!(false, "substrate-bn failed: {e}"),
+        }
     }
 }
 // #endregion
@@ -150,6 +172,24 @@ proptest! {
             (Err(e), Ok(_)) => prop_assert!(false, "ckb-alt-bn128 failed: {e}"),
             (Ok(_), Err(e)) => prop_assert!(false, "substrate-bn failed: {e}"),
             (Err(_), Err(_)) => {}
+        }
+    }
+
+    #[test]
+    fn parse_compressed_g1_random_equiv(buf in any::<[u8; 32]>(), negative in any::<bool>()) {
+        let compressed = with_g1_flag(buf, negative);
+
+        let pb_result = parse_compressed_g1(&compressed);
+        let sb_result = sb_parse_compressed_g1(&compressed);
+
+        match (pb_result, sb_result) {
+            (Ok(pb_pt), Ok(sb_pt)) => {
+                let pb_bytes = g1_to_bytes(&pb_pt).expect("g1_to_bytes");
+                prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_pt)[..]);
+            }
+            (Err(_), Err(_)) => {}
+            (Err(e), Ok(_)) => prop_assert!(false, "ckb-alt-bn128 failed: {e}"),
+            (Ok(_), Err(e)) => prop_assert!(false, "substrate-bn failed: {e}"),
         }
     }
 }
