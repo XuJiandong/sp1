@@ -273,5 +273,29 @@ proptest! {
         let pb_bytes = g1_to_bytes(&pb_result).expect("g1_to_bytes");
         prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_result)[..]);
     }
+
+    #[test]
+    fn affine_g1_msm_zero_scalar_equiv(a in 1u64..1000u64, b in 1u64..1000u64) {
+        let point_seeds = [1u64, 2, 3, 4];
+        let scalar_seeds = [0u64, a, 0, b];
+
+        let mut pb_points = Vec::with_capacity(point_seeds.len());
+        let mut sb_points = Vec::with_capacity(point_seeds.len());
+        let mut pb_scalars = Vec::with_capacity(point_seeds.len());
+        let mut sb_scalars = Vec::with_capacity(point_seeds.len());
+
+        for i in 0..point_seeds.len() {
+            let buf = g1_uncompressed(point_seeds[i]);
+            pb_points.push(parse_uncompressed_g1(&buf).expect("valid G1"));
+            sb_points.push(sb_parse_uncompressed_g1(&buf).expect("valid G1"));
+            pb_scalars.push(pb::Fr::from_slice(&scalar_bytes(scalar_seeds[i])).expect("valid Fr"));
+            sb_scalars.push(sb::Fr::from_slice(&scalar_bytes(scalar_seeds[i])).expect("valid Fr"));
+        }
+
+        let pb_result = affine_g1_msm(&pb_points, &pb_scalars);
+        let sb_result = sb::AffineG1::msm(&sb_points, &sb_scalars);
+        let pb_bytes = g1_to_bytes(&pb_result).expect("g1_to_bytes");
+        prop_assert_eq!(pb_bytes.as_slice(), &sb_g1_to_bytes(sb_result)[..]);
+    }
 }
 // #endregion
