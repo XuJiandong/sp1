@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-verifier"
-version = "6.0.2"
+version = "6.1.0"
 dependencies = [
  "blake3",
  "ckb-alt-bn128",

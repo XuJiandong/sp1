@@ -1,8 +1,8 @@
 [package]
 name = "sp1-verifier"
+version = "6.1.0"
 description = "Verifier for SP1 Groth16 and Plonk proofs."
 readme = "README.md"
-version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
