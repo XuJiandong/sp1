@@ -7,7 +7,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_symmetric::CryptographicHasher;
 use sp1_hypercube::{
     verify_merkle_proof, HashableKey, InnerSC, MachineVerifier, MachineVerifierError,
-    SP1RecursionProof, ShardVerifier, DIGEST_SIZE,
+    SP1RecursionProof, ShardVerifier, DIGEST_SIZE, PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{fri_params::recursion_fri_config, poseidon2_hasher, SP1Field};
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
@@ -16,7 +16,6 @@ use super::CompressedError;
 use crate::{
     blake3_hash,
     compressed::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT},
-    hash_public_inputs, hash_public_inputs_with_fn,
 };
 
 /// The finite field used for compress proofs.
@@ -52,7 +51,7 @@ impl Default for SP1CompressedVerifier {
         );
 
         let verifier = MachineVerifier::new(recursion_shard_verifier);
-        let vk_merkle_root = [SP1Field::zero(); DIGEST_SIZE]; // Placeholder for vk merkle root.
+        let vk_merkle_root = crate::VerifierRecursionVks::default().root();
         Self { verifier, vk_merkle_root }
     }
 }
@@ -96,6 +95,11 @@ impl SP1CompressedVerifier {
             .verify_shard(compress_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
+        // Check the public values length.
+        if proof.public_values.len() != PROOF_MAX_NUM_PVS {
+            return Err(MachineVerifierError::InvalidPublicValues("invalid public values length"))?;
+        }
+
         // Validate the public values.
         let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
 
@@ -106,9 +110,15 @@ impl SP1CompressedVerifier {
             )
             .into());
         }
-        // TODO: add compress vkey verification when circuits are released.
+
+        // Verify the merkle proof of inclusion in the tree.
         verify_merkle_proof(vk_merkle_proof, compress_vk.hash_koalabear(), self.vk_merkle_root)
             .map_err(CompressedError::InvalidVkey)?;
+
+        // Verify that the vk merkle tree root in the public values matches the expected root.
+        if public_values.vk_root != self.vk_merkle_root {
+            return Err(MachineVerifierError::InvalidPublicValues("vk merkle root mismatch"))?;
+        }
 
         // `is_complete` should be 1. This ensures that the proof is fully reduced.
         if public_values.is_complete != SP1Field::one() {
@@ -148,10 +158,13 @@ impl SP1CompressedVerifier {
             .flat_map(|w| w.iter().map(|x| x.as_canonical_u32() as u8))
             .collect::<Vec<_>>();
 
-        if committed_value_digest_bytes.as_slice()
-            != hash_public_inputs(sp1_public_inputs).as_slice()
-            && committed_value_digest_bytes.as_slice()
-                != hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash)
+        // For compressed proofs, the committed digest uses the full hash (no bit masking).
+        // hash_public_inputs zeroes the top 3 bits for Plonk/Groth16 field compatibility,
+        // but that doesn't apply here.
+        let sha256_digest = crate::sha256_hash(sp1_public_inputs);
+        let blake3_digest = blake3_hash(sp1_public_inputs);
+        if committed_value_digest_bytes.as_slice() != sha256_digest.as_slice()
+            && committed_value_digest_bytes.as_slice() != blake3_digest.as_slice()
         {
             return Err(CompressedError::PublicValuesMismatch);
         }
