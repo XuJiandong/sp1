@@ -217,7 +217,7 @@ pub fn get_groth16_vkey_hash(build_dir: &Path) -> Result<[u8; 32]> {
 
 /// Get the vk root as a hex string.
 pub fn get_vk_root() -> String {
-    hex::encode(*VK_ROOT_BYTES)
+    hex::encode(VK_ROOT_BYTES)
 }
 
 /// Build the Plonk contracts.
